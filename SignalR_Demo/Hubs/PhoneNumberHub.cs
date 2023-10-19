@@ -81,16 +81,31 @@ namespace SignalR_Demo.Hubs
 
         private async Task UnassignInUsePhoneNumber()
         {
-            var disconnectedAssignment = _assignedPhoneNumbers.Where(x => x.ConnectionId == Context.ConnectionId).First();
-            _assignedPhoneNumbers = new ConcurrentQueue<PhoneNumberAssignment>(_assignedPhoneNumbers.Where(a => a != disconnectedAssignment)); // Ugly way to RemoveAt from queue
-
-            _availablePhoneNumbers.Enqueue(disconnectedAssignment.PhoneNumber);
-
-            var defaultPhoneNumberConnectionId = _defaultPhoneNumberConnectionIds.Take(1).FirstOrDefault();
-            if (!string.IsNullOrEmpty(defaultPhoneNumberConnectionId))
+            var disconnectedAssignment = _assignedPhoneNumbers.FirstOrDefault(x => x.ConnectionId == Context.ConnectionId);
+            if (disconnectedAssignment != null)
             {
-                await Clients.Client(defaultPhoneNumberConnectionId).ExpirePhoneNumber();
+                _assignedPhoneNumbers =
+                    new ConcurrentQueue<PhoneNumberAssignment>(
+                        _assignedPhoneNumbers.Where(a =>
+                            a != disconnectedAssignment)); // Ugly way to do a RemoveAt from queue
+
+                //_defaultPhoneNumberConnectionIds.Remove(disconnectedAssignment.ConnectionId);
+
+                _availablePhoneNumbers.Enqueue(disconnectedAssignment.PhoneNumber);
+
+                //Give newly unassigned number to first user with a default phone number:
+                var defaultPhoneNumberConnectionId = _defaultPhoneNumberConnectionIds.FirstOrDefault();
+                _defaultPhoneNumberConnectionIds.RemoveAt(0);
+                if (!string.IsNullOrEmpty(defaultPhoneNumberConnectionId))
+                {
+                    await Clients.Client(defaultPhoneNumberConnectionId).ExpirePhoneNumber();
+                }
             }
+            else
+            {
+                _defaultPhoneNumberConnectionIds.Remove(Context.ConnectionId);
+            }
+
         }
     }
 }
