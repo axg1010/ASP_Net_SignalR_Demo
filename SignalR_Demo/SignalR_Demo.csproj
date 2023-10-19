@@ -145,6 +145,7 @@
     </Compile>
     <Compile Include="Hubs\PhoneNumberHub.cs" />
     <Compile Include="IPhoneNumberClient.cs" />
+    <Compile Include="PhoneNumberAssignment.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Startup.cs" />
   </ItemGroup>

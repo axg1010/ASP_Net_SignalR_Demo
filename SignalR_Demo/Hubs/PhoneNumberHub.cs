@@ -1,5 +1,8 @@
 ﻿using Microsoft.AspNet.SignalR;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SignalR_Demo.Hubs
@@ -10,14 +13,17 @@ namespace SignalR_Demo.Hubs
 
         private static ConcurrentQueue<string> _availablePhoneNumbers = null;
 
-        private static ConcurrentDictionary<string, string> _assignedPhoneNumbers = null;
+        private static ConcurrentQueue<PhoneNumberAssignment> _assignedPhoneNumbers = null;
+
+        private static List<string> _defaultPhoneNumberConnectionIds = null;
 
         public PhoneNumberHub()
         {
             if (_availablePhoneNumbers == null)
             {
                 _availablePhoneNumbers = new ConcurrentQueue<string>();
-                _assignedPhoneNumbers = new ConcurrentDictionary<string, string>();
+                _assignedPhoneNumbers = new ConcurrentQueue<PhoneNumberAssignment>();
+                _defaultPhoneNumberConnectionIds = new List<string>();
 
                 _availablePhoneNumbers.Enqueue("1-800-111-1111");
                 _availablePhoneNumbers.Enqueue("1-800-222-2222");
@@ -26,49 +32,64 @@ namespace SignalR_Demo.Hubs
             }
         }
 
-        public async Task GenerateNewPhoneNumber()
+        public async Task AssignNewPhoneNumber()
         {
-            string newPhoneNumber = await GetNextAvailablePhoneNumber();
+            string newPhoneNumber = await AssignNextAvailablePhoneNumber();
 
             await Clients.Caller.UpdatePhoneNumber(newPhoneNumber);
         }
 
         public override async Task OnConnected()
         {
-            await GenerateNewPhoneNumber();
+            await AssignNewPhoneNumber();
             await base.OnConnected();
         }
 
         public override async Task OnDisconnected(bool stopCalled)
         {
-            await ExpireInUsePhoneNumber();
+            await UnassignInUsePhoneNumber();
             await base.OnDisconnected(stopCalled);
         }
 
-        private async Task<string> GetNextAvailablePhoneNumber()
+        private async Task<string> AssignNextAvailablePhoneNumber()
         {
-            if (_availablePhoneNumbers.Count > 0)
+            string phoneNumber = null;
+            if (_availablePhoneNumbers.TryDequeue(out phoneNumber))
             {
-                string phoneNumber = null;
-                _availablePhoneNumbers.TryDequeue(out phoneNumber);
-                await Groups.Remove(Context.ConnectionId, DEFAULT_PHONE_NUMBER);
-                _assignedPhoneNumbers.TryAdd(Context.ConnectionId, phoneNumber);
-                return phoneNumber;
+                _defaultPhoneNumberConnectionIds.Remove(Context.ConnectionId);
             }
             else
             {
-                await Groups.Add(Context.ConnectionId, DEFAULT_PHONE_NUMBER);
-                return DEFAULT_PHONE_NUMBER;
+                // dequeue assigned phone number
+                PhoneNumberAssignment oldAssignment = null;
+                _assignedPhoneNumbers.TryDequeue(out oldAssignment);
+                phoneNumber = oldAssignment.PhoneNumber;
+
+                // Expire old user's phone number
+                await Clients.Client(oldAssignment.ConnectionId).UpdatePhoneNumber(DEFAULT_PHONE_NUMBER);
+                _defaultPhoneNumberConnectionIds.Add(oldAssignment.ConnectionId);
             }
+
+            _assignedPhoneNumbers.Enqueue(new PhoneNumberAssignment()
+            {
+                ConnectionId = Context.ConnectionId,
+                PhoneNumber = phoneNumber
+            });
+
+            return phoneNumber;
         }
 
-        private async Task ExpireInUsePhoneNumber()
+        private async Task UnassignInUsePhoneNumber()
         {
-            string expiredPhoneNumber = null;
-            if (_assignedPhoneNumbers.TryRemove(Context.ConnectionId, out expiredPhoneNumber))
+            var disconnectedAssignment = _assignedPhoneNumbers.Where(x => x.ConnectionId == Context.ConnectionId).First();
+            _assignedPhoneNumbers = new ConcurrentQueue<PhoneNumberAssignment>(_assignedPhoneNumbers.Where(a => a != disconnectedAssignment)); // Ugly way to RemoveAt from queue
+
+            _availablePhoneNumbers.Enqueue(disconnectedAssignment.PhoneNumber);
+
+            var defaultPhoneNumberConnectionId = _defaultPhoneNumberConnectionIds.Take(1).FirstOrDefault();
+            if (!string.IsNullOrEmpty(defaultPhoneNumberConnectionId))
             {
-                _availablePhoneNumbers.Enqueue(expiredPhoneNumber);
-                await Clients.Group(DEFAULT_PHONE_NUMBER).ExpirePhoneNumber();
+                await Clients.Client(defaultPhoneNumberConnectionId).ExpirePhoneNumber();
             }
         }
     }

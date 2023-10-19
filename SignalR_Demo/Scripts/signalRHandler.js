@@ -5,7 +5,7 @@
     };
 
     hubProxy.client.expirePhoneNumber = () => {
-        hubProxy.server.generateNewPhoneNumber();
+        hubProxy.server.assignNewPhoneNumber();
         };
 
     hubProxy.client.finished = (order) => {
