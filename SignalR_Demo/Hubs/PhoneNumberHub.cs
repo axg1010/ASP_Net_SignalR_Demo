@@ -26,7 +26,7 @@ namespace SignalR_Demo.Hubs
             }
         }
 
-        public async Task GenerateNewPhoneNumber(string oldPhoneNumber)
+        public async Task GenerateNewPhoneNumber()
         {
             string newPhoneNumber = await GetNextAvailablePhoneNumber();
 
@@ -35,7 +35,7 @@ namespace SignalR_Demo.Hubs
 
         public override async Task OnConnected()
         {
-            await GenerateNewPhoneNumber(null);
+            await GenerateNewPhoneNumber();
             await base.OnConnected();
         }
 

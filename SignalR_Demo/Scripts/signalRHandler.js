@@ -5,8 +5,7 @@
     };
 
     hubProxy.client.expirePhoneNumber = () => {
-        const telephoneDiv = document.getElementById("telephone");
-        hubProxy.server.generateNewPhoneNumber(telephoneDiv.innerHTML);
+        hubProxy.server.generateNewPhoneNumber();
         };
 
     hubProxy.client.finished = (order) => {
